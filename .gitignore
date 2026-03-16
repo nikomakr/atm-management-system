@@ -1,0 +1,7 @@
+# Editor
+.vscode/
+
+# Build artifacts
+build/
+*.o
+*.out
