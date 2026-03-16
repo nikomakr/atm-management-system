@@ -2,12 +2,12 @@
 
 const char *RECORDS = "./data/records.txt";
 
-int getAccountFromFile(FILE *ptr, char name[50], struct Record *r)
+int getAccountFromFile(FILE *ptr, struct Record *r)
 {
-    return fscanf(ptr, "%d %d %s %d %d/%d/%d %s %d %lf %s",
+    return fscanf(ptr, "%d %d %s %d %d/%d/%d %s %ld %lf %s",
                   &r->id,
 		  &r->userId,
-		  name,
+		  r->name,
                   &r->accountNbr,
                   &r->deposit.month,
                   &r->deposit.day,
@@ -20,10 +20,10 @@ int getAccountFromFile(FILE *ptr, char name[50], struct Record *r)
 
 void saveAccountToFile(FILE *ptr, struct User u, struct Record r)
 {
-    fprintf(ptr, "%d %d %s %d %d/%d/%d %s %d %.2lf %s\n\n",
-            &r->id,
-	    &u->id
-	    &u->name,
+    fprintf(ptr, "%d %d %s %d %d/%d/%d %s %ld %.2lf %s\n\n",
+            r.id,
+	    u.id,
+	    u.name,
             r.accountNbr,
             r.deposit.month,
             r.deposit.day,
@@ -100,7 +100,6 @@ void createNewAcc(struct User u)
 {
     struct Record r;
     struct Record cr;
-    char userName[50];
     FILE *pf = fopen(RECORDS, "a+");
 
 noAccount:
@@ -112,9 +111,11 @@ noAccount:
     printf("\nEnter the account number:");
     scanf("%d", &r.accountNbr);
 
-    while (getAccountFromFile(pf, userName, &cr))
+    int recordCount = 0;
+    while (getAccountFromFile(pf, &cr))
     {
-        if (strcmp(userName, u.name) == 0 && cr.accountNbr == r.accountNbr)
+        recordCount++;
+        if (strcmp(cr.name, u.name) == 0 && cr.accountNbr == r.accountNbr)
         {
             printf("✖ This Account already exists for this user\n\n");
             goto noAccount;
@@ -123,12 +124,14 @@ noAccount:
     printf("\nEnter the country:");
     scanf("%s", r.country);
     printf("\nEnter the phone number:");
-    scanf("%d", &r.phone);
+    scanf("%ld", &r.phone);
     printf("\nEnter amount to deposit: $");
     scanf("%lf", &r.amount);
     printf("\nChoose the type of account:\n\t-> saving\n\t-> current\n\t-> fixed01(for 1 year)\n\t-> fixed02(for 2 years)\n\t-> fixed03(for 3 years)\n\n\tEnter your choice:");
     scanf("%s", r.accountType);
 
+    r.id = recordCount;
+    r.userId = u.id;
     saveAccountToFile(pf, u, r);
 
     fclose(pf);
@@ -137,19 +140,18 @@ noAccount:
 
 void checkAllAccounts(struct User u)
 {
-    char userName[100];
     struct Record r;
 
     FILE *pf = fopen(RECORDS, "r");
 
     system("clear");
     printf("\t\t====== All accounts from user, %s =====\n\n", u.name);
-    while (getAccountFromFile(pf, userName, &r))
+    while (getAccountFromFile(pf, &r))
     {
-        if (strcmp(userName, u.name) == 0)
+        if (strcmp(r.name, u.name) == 0)
         {
             printf("_____________________\n");
-            printf("\nAccount number:%d\nDeposit Date:%d/%d/%d \ncountry:%s \nPhone number:%d \nAmount deposited: $%.2f \nType Of Account:%s\n",
+            printf("\nAccount number:%d\nDeposit Date:%d/%d/%d \ncountry:%s \nPhone number:%ld \nAmount deposited: $%.2f \nType Of Account:%s\n",
                    r.accountNbr,
                    r.deposit.day,
                    r.deposit.month,

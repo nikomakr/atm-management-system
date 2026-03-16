@@ -14,7 +14,7 @@ struct Record
     int userId;
     char name[100];
     char country[100];
-    int phone;
+    long phone;
     char accountType[10];
     int accountNbr;
     double amount;
