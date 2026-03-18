@@ -1,4 +1,4 @@
-#include <termios.h>
+#include <termios.h> // for terminal control (hiding password input)
 #include "header.h"
 
 char *USERS = "./data/users.txt";

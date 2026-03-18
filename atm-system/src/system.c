@@ -138,6 +138,88 @@ noAccount:
     success(u);
 }
 
+void updateAccount(struct User u)
+{
+    struct Record r;
+    struct Record records[100];
+    int count = 0;
+    int accountNbr;
+    int found = 0;
+    int foundIdx = -1;
+
+    system("clear");
+    printf("\t\t====== Update Account Information =====\n\n");
+    printf("Enter the account number: ");
+    scanf("%d", &accountNbr);
+
+    FILE *pf = fopen(RECORDS, "r");
+    if (pf == NULL)
+    {
+        printf("Error opening file!\n");
+        return;
+    }
+
+    while (getAccountFromFile(pf, &r))
+    {
+        records[count] = r;
+        if (strcmp(r.name, u.name) == 0 && r.accountNbr == accountNbr)
+        {
+            found = 1;
+            foundIdx = count;
+        }
+        count++;
+    }
+    fclose(pf);
+
+    if (!found)
+    {
+        stayOrReturn(0, updateAccount, u);
+        return;
+    }
+
+    int choice;
+    printf("\nWhat would you like to update?\n");
+    printf("[1]- Phone number\n");
+    printf("[2]- Country\n");
+    printf("Enter your choice: ");
+    scanf("%d", &choice);
+
+    if (choice == 1)
+    {
+        printf("Enter new phone number: ");
+        scanf("%ld", &records[foundIdx].phone);
+    }
+    else if (choice == 2)
+    {
+        printf("Enter new country: ");
+        scanf("%s", records[foundIdx].country);
+    }
+    else
+    {
+        printf("Invalid choice!\n");
+        stayOrReturn(1, updateAccount, u);
+        return;
+    }
+
+    FILE *pfw = fopen(RECORDS, "w");
+    if (pfw == NULL)
+    {
+        printf("Error opening file!\n");
+        return;
+    }
+
+    for (int i = 0; i < count; i++)
+    {
+        struct User ru;
+        ru.id = records[i].userId;
+        strcpy(ru.name, records[i].name);
+        saveAccountToFile(pfw, ru, records[i]);
+    }
+    fclose(pfw);
+
+    success(u);
+}
+
 void checkAllAccounts(struct User u)
 {
     struct Record r;
