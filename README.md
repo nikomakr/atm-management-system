@@ -27,12 +27,12 @@ This project is a terminal-based ATM management system written in **C**. It allo
 
 | Feature | Status |
 |---|---|
-| User Registration | TODO |
+| User Registration | Done |
 | User Login (with hidden password input) | Done |
 | Create a new account | Done |
 | Check details of a single account | TODO |
 | Check list of all owned accounts | Done |
-| Update account information (country / phone) | TODO |
+| Update account information (country / phone) | Done |
 | Make a transaction (deposit / withdraw) | TODO |
 | Remove an existing account | TODO |
 | Transfer account ownership to another user | TODO |
@@ -120,13 +120,13 @@ After logging in, the main menu provides the following options:
 Each line represents a registered user in the following format:
 
 ```
-<username> <password>
+<id> <username> <password>
 ```
 
 **Example:**
 ```
-Alice securepassword
-Michel anotherpassword
+0 Alice securepassword
+1 Michel anotherpassword
 ```
 
 > Note: Usernames must be unique. Duplicate names are rejected at registration.
@@ -149,19 +149,19 @@ Each entry represents a bank account record in the following format:
 
 ---
 
-## Account Types
+## Account Types & Interest Rates
 
 When creating an account, the following types are available:
 
-| Account Type | Description |
-|---|---|
-| `current` | Standard current account |
-| `saving` | Savings account |
-| `fixed01` | Fixed term — 1 year |
-| `fixed02` | Fixed term — 2 years |
-| `fixed03` | Fixed term — 3 years |
+| Account Type | Description | Interest | Deposit/Withdraw |
+|---|---|---|---|
+| `current` | Standard current account | None | Allowed |
+| `saving` | Savings account | 0.5834% on the 10th of each month | Allowed |
+| `fixed01` | Fixed term — 1 year | 4.005% paid on maturity date | Not allowed |
+| `fixed02` | Fixed term — 2 years | 10.012% paid on maturity date | Not allowed |
+| `fixed03` | Fixed term — 3 years | 24.029% paid on maturity date | Not allowed |
 
-> **Note: Interest rate logic and transaction rules per account type are not yet implemented.**
+> **Note: Interest calculation and transaction restrictions per account type are not yet implemented.**
 
 ---
 

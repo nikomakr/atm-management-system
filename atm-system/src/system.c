@@ -220,6 +220,81 @@ void updateAccount(struct User u)
     success(u);
 }
 
+void checkAccount(struct User u)
+{
+    struct Record r;
+    int accountNbr;
+    int found = 0;
+
+    system("clear");
+    printf("\t\t====== Check Account Details =====\n\n");
+    printf("Enter the account number: ");
+    scanf("%d", &accountNbr);
+
+    FILE *pf = fopen(RECORDS, "r");
+    if (pf == NULL)
+    {
+        printf("Error opening file!\n");
+        return;
+    }
+
+    while (getAccountFromFile(pf, &r))
+    {
+        if (strcmp(r.name, u.name) == 0 && r.accountNbr == accountNbr)
+        {
+            found = 1;
+            break;
+        }
+    }
+    fclose(pf);
+
+    if (!found)
+    {
+        stayOrReturn(0, checkAccount, u);
+        return;
+    }
+
+    printf("_____________________\n");
+    printf("\nAccount number: %d\n", r.accountNbr);
+    printf("Deposit Date: %d/%d/%d\n", r.deposit.month, r.deposit.day, r.deposit.year);
+    printf("Country: %s\n", r.country);
+    printf("Phone number: %ld\n", r.phone);
+    printf("Amount deposited: $%.2f\n", r.amount);
+    printf("Type of account: %s\n", r.accountType);
+
+    double interest;
+    if (strcmp(r.accountType, "saving") == 0)
+    {
+        interest = r.amount * 0.07 / 12;
+        printf("\nYou will get $%.2f as interest on day %d of every month\n",
+               interest, r.deposit.day);
+    }
+    else if (strcmp(r.accountType, "fixed01") == 0)
+    {
+        interest = r.amount * 0.04;
+        printf("\nYou will get $%.2f as interest on %d/%d/%d\n",
+               interest, r.deposit.month, r.deposit.day, r.deposit.year + 1);
+    }
+    else if (strcmp(r.accountType, "fixed02") == 0)
+    {
+        interest = r.amount * 0.05;
+        printf("\nYou will get $%.2f as interest on %d/%d/%d\n",
+               interest, r.deposit.month, r.deposit.day, r.deposit.year + 2);
+    }
+    else if (strcmp(r.accountType, "fixed03") == 0)
+    {
+        interest = r.amount * 0.08;
+        printf("\nYou will get $%.2f as interest on %d/%d/%d\n",
+               interest, r.deposit.month, r.deposit.day, r.deposit.year + 3);
+    }
+    else
+    {
+        printf("\nYou will not get interests because the account is of type current\n");
+    }
+
+    success(u);
+}
+
 void checkAllAccounts(struct User u)
 {
     struct Record r;
