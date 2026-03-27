@@ -220,6 +220,157 @@ void updateAccount(struct User u)
     success(u);
 }
 
+void transferOwnership(struct User u)
+{
+    struct Record r;
+    struct Record records[100];
+    int count = 0;
+    int accountNbr;
+    int found = 0;
+    int foundIdx = -1;
+
+    system("clear");
+    printf("\t\t====== Transfer Account Ownership =====\n\n");
+    printf("Enter the account number to transfer: ");
+    scanf("%d", &accountNbr);
+
+    FILE *pf = fopen(RECORDS, "r");
+    if (pf == NULL)
+    {
+        printf("Error opening file!\n");
+        return;
+    }
+
+    while (getAccountFromFile(pf, &r))
+    {
+        records[count] = r;
+        if (strcmp(r.name, u.name) == 0 && r.accountNbr == accountNbr)
+        {
+            found = 1;
+            foundIdx = count;
+        }
+        count++;
+    }
+    fclose(pf);
+
+    if (!found)
+    {
+        stayOrReturn(0, transferOwnership, u);
+        return;
+    }
+
+    char targetName[50];
+    printf("Enter the username to transfer ownership to: ");
+    scanf("%s", targetName);
+
+    // look up target user in users.txt
+    struct User target;
+    int targetFound = 0;
+    FILE *uf = fopen("./data/users.txt", "r");
+    if (uf == NULL)
+    {
+        printf("Error opening users file!\n");
+        return;
+    }
+    while (fscanf(uf, "%d %s %s", &target.id, target.name, target.password) != EOF)
+    {
+        if (strcmp(target.name, targetName) == 0)
+        {
+            targetFound = 1;
+            break;
+        }
+    }
+    fclose(uf);
+
+    if (!targetFound)
+    {
+        printf("\n✖ User \"%s\" not found!\n", targetName);
+        stayOrReturn(0, transferOwnership, u);
+        return;
+    }
+
+    records[foundIdx].userId = target.id;
+    strcpy(records[foundIdx].name, target.name);
+
+    FILE *pfw = fopen(RECORDS, "w");
+    if (pfw == NULL)
+    {
+        printf("Error opening file!\n");
+        return;
+    }
+
+    for (int i = 0; i < count; i++)
+    {
+        struct User ru;
+        ru.id = records[i].userId;
+        strcpy(ru.name, records[i].name);
+        saveAccountToFile(pfw, ru, records[i]);
+    }
+    fclose(pfw);
+
+    success(u);
+}
+
+void removeAccount(struct User u)
+{
+    struct Record r;
+    struct Record records[100];
+    int count = 0;
+    int accountNbr;
+    int found = 0;
+    int foundIdx = -1;
+
+    system("clear");
+    printf("\t\t====== Remove Account =====\n\n");
+    printf("Enter the account number: ");
+    scanf("%d", &accountNbr);
+
+    FILE *pf = fopen(RECORDS, "r");
+    if (pf == NULL)
+    {
+        printf("Error opening file!\n");
+        return;
+    }
+
+    while (getAccountFromFile(pf, &r))
+    {
+        records[count] = r;
+        if (strcmp(r.name, u.name) == 0 && r.accountNbr == accountNbr)
+        {
+            found = 1;
+            foundIdx = count;
+        }
+        count++;
+    }
+    fclose(pf);
+
+    if (!found)
+    {
+        stayOrReturn(0, removeAccount, u);
+        return;
+    }
+
+    FILE *pfw = fopen(RECORDS, "w");
+    if (pfw == NULL)
+    {
+        printf("Error opening file!\n");
+        return;
+    }
+
+    for (int i = 0; i < count; i++)
+    {
+        if (i == foundIdx)
+            continue;
+        struct User ru;
+        ru.id = records[i].userId;
+        strcpy(ru.name, records[i].name);
+        saveAccountToFile(pfw, ru, records[i]);
+    }
+    fclose(pfw);
+
+    success(u);
+}
+
 void checkAccount(struct User u)
 {
     struct Record r;

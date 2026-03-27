@@ -30,11 +30,11 @@ This project is a terminal-based ATM management system written in **C**. It allo
 | User Registration | Done |
 | User Login (with hidden password input) | Done |
 | Create a new account | Done |
-| Check details of a single account | TODO |
+| Check details of a single account | Done |
 | Check list of all owned accounts | Done |
 | Update account information (country / phone) | Done |
 | Make a transaction (deposit / withdraw) | TODO |
-| Remove an existing account | TODO |
+| Remove an existing account | Done |
 | Transfer account ownership to another user | TODO |
 
 ---
@@ -161,7 +161,7 @@ When creating an account, the following types are available:
 | `fixed02` | Fixed term — 2 years | 10.012% paid on maturity date | Not allowed |
 | `fixed03` | Fixed term — 3 years | 24.029% paid on maturity date | Not allowed |
 
-> **Note: Interest calculation and transaction restrictions per account type are not yet implemented.**
+> **Note: Interest is calculated and displayed when checking a single account. Transaction restrictions per account type and actual transaction processing are not yet implemented.**
 
 ---
 
