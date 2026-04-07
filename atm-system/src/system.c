@@ -308,6 +308,8 @@ void transferOwnership(struct User u)
     }
     fclose(pfw);
 
+    sendNotification(target.name, u.name, accountNbr);
+
     success(u);
 }
 

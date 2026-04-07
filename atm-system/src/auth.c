@@ -33,6 +33,25 @@ void loginMenu(char a[50], char pass[50])
     }
 };
 
+void loadUser(struct User *u)
+{
+    FILE *fp = fopen(USERS, "r");
+    if (fp == NULL)
+        return;
+
+    struct User tmp;
+    while (fscanf(fp, "%d %s %s", &tmp.id, tmp.name, tmp.password) != EOF)
+    {
+        if (strcmp(tmp.name, u->name) == 0)
+        {
+            u->id = tmp.id;
+            fclose(fp);
+            return;
+        }
+    }
+    fclose(fp);
+}
+
 const char *getPassword(struct User u)
 {
     FILE *fp;

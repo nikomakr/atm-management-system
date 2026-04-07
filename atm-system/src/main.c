@@ -91,9 +91,11 @@ void initMenu(struct User *u)
 
 int main()
 {
-    struct User u;
-    
+    struct User u = {0};
+
     initMenu(&u);
+    loadUser(&u);
+    startNotificationListener(u);
     mainMenu(u);
     return 0;
 }
