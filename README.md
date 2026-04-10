@@ -1,6 +1,6 @@
 # ATM Management System
 
-> A terminal-based ATM management system written in C, featuring user authentication, account management, ownership transfers with real-time notifications, and persistent file-based storage. Built as part of a systems programming exercise to practise low-level memory and file manipulation.
+> A terminal-based ATM management system written in C, featuring user authentication, account management, deposits, withdrawals, ownership transfers with real-time notifications, and persistent file-based storage. Built as part of a systems programming exercise to practise low-level memory and file manipulation.
 
 ---
 
@@ -13,6 +13,7 @@
 - [Usage](#usage)
 - [Data Format](#data-format)
 - [Account Types & Interest Rates](#account-types--interest-rates)
+- [Input Validation](#input-validation)
 - [Real-Time Notifications](#real-time-notifications)
 - [Contributing](#contributing)
 
@@ -28,16 +29,16 @@ This project is a terminal-based ATM management system written in **C**. It allo
 
 | Feature | Status |
 |---|---|
-| User Registration | Done |
-| User Login (with hidden password input) | Done |
-| Create a new account | Done |
-| Check details of a single account | Done |
+| User Registration (unique usernames, auto-incremented IDs) | Done |
+| User Login (with hidden password input, case-sensitive) | Done |
+| Create a new account (12-digit account number, validated phone) | Done |
+| Check details of a single account (with interest calculation) | Done |
 | Check list of all owned accounts | Done |
 | Update account information (country / phone) | Done |
+| Make a transaction — deposit or withdraw (saved to `transactions.txt`) | Done |
 | Remove an existing account | Done |
 | Transfer account ownership to another user | Done |
-| Real-time notification on ownership transfer | Done |
-| Make a transaction (deposit / withdraw) | TODO |
+| Real-time notification on ownership transfer (named pipes + fork) | Done |
 
 ---
 
@@ -47,17 +48,18 @@ This project is a terminal-based ATM management system written in **C**. It allo
 atm-system/
 │
 ├── data/
-│   ├── users.txt        # Stores registered user credentials
-│   └── records.txt      # Stores all account records
+│   ├── users.txt          # Registered user credentials
+│   ├── records.txt        # All account records
+│   └── transactions.txt   # Log of all deposits and withdrawals
 │
 ├── src/
-│   ├── main.c           # Entry point & menu logic
-│   ├── auth.c           # Login, registration & user lookup
-│   ├── system.c         # Core account management functions
-│   ├── notification.c   # Real-time IPC notifications (named pipes + fork)
-│   └── header.h         # Shared structs & function declarations
+│   ├── main.c             # Entry point & menu logic
+│   ├── auth.c             # Login, registration & user lookup
+│   ├── system.c           # Core account management & validation
+│   ├── notification.c     # Real-time IPC notifications (named pipes + fork)
+│   └── header.h           # Shared structs & function declarations
 │
-└── Makefile             # Build configuration
+└── Makefile               # Build configuration
 ```
 
 ---
@@ -114,7 +116,7 @@ After logging in, the main menu provides the following options:
 [2]- Update account information
 [3]- Check accounts
 [4]- Check list of owned accounts
-[5]- Make Transaction         (not yet implemented)
+[5]- Make Transaction
 [6]- Remove existing account
 [7]- Transfer ownership
 [8]- Exit
@@ -132,14 +134,18 @@ Each line represents a registered user:
 <id> <username> <password>
 ```
 
+| Field | Description |
+|---|---|
+| `id` | 3-digit zero-padded, auto-incremented (000, 001, 002…) |
+| `username` | Unique. Duplicate names rejected at registration. Case-sensitive. |
+| `password` | Stored in plain text |
+
 **Example:**
 ```
-0 Alice securepassword
-1 Michel anotherpassword
-2 Bob yetanotherpassword
+000 Alice securepassword
+001 Michel anotherpassword
+002 Bob yetanotherpassword
 ```
-
-> Usernames must be unique. Duplicate names are rejected at registration. IDs are assigned automatically in incrementing order.
 
 ---
 
@@ -153,20 +159,47 @@ Each entry represents a bank account record:
 
 | Column | Field | Description |
 |---|---|---|
-| 1 | `id` | Record index (order it was created) |
-| 2 | `user_id` | ID of the owning user from `users.txt` |
+| 1 | `id` | Unique record ID — always `max existing id + 1` |
+| 2 | `user_id` | 3-digit zero-padded ID of the owning user (e.g. `002`) |
 | 3 | `username` | Name of the owning user |
-| 4 | `account_number` | Account number chosen at creation |
+| 4 | `account_number` | Exactly 12 digits, globally unique |
 | 5 | `deposit date` | Date the account was opened (mm/dd/yyyy) |
 | 6 | `country` | Country entered by the user |
-| 7 | `phone` | Phone number |
+| 7 | `phone` | Up to 15 digits, leading zeros preserved (e.g. `004412345678`) |
 | 8 | `balance` | Current balance in dollars |
 | 9 | `account_type` | One of: `saving`, `current`, `fixed01`, `fixed02`, `fixed03` |
 
 **Example:**
 ```
-0 0 Alice 0 10/10/2012 Germany 291321234 22432.52 saving
-1 1 Michel 2 02/05/2001 Portugal 123543455 10023.23 fixed01
+0 000 Alice 100000000001 10/10/2012 Germany 004491821234 22432.52 saving
+1 001 Michel 100000000002 02/05/2001 Portugal 00351123543455 10023.23 fixed01
+```
+
+---
+
+### `data/transactions.txt`
+
+Each entry represents a single deposit or withdrawal:
+
+```
+<id> <user_id> <username> <account_number> <type> <amount> <new_balance> <mm/dd/yyyy>
+```
+
+| Column | Field | Description |
+|---|---|---|
+| 1 | `id` | Auto-incremented transaction ID |
+| 2 | `user_id` | 3-digit zero-padded ID of the user who made the transaction |
+| 3 | `username` | Name of the user |
+| 4 | `account_number` | 12-digit account number |
+| 5 | `type` | `deposit` or `withdraw` |
+| 6 | `amount` | Amount transacted |
+| 7 | `new_balance` | Balance after the transaction |
+| 8 | `date` | Date of the transaction (mm/dd/yyyy) |
+
+**Example:**
+```
+0 000 Alice 100000000001 deposit 500.00 22932.52 10/10/2012
+1 000 Alice 100000000001 withdraw 100.00 22832.52 10/10/2012
 ```
 
 ---
@@ -175,15 +208,31 @@ Each entry represents a bank account record:
 
 When creating an account, the following types are available:
 
-| Account Type | Description | Interest |
-|---|---|---|
-| `current` | Standard current account | None |
-| `saving` | Savings account | 7% per year, paid monthly (~0.583%) on the deposit day each month |
-| `fixed01` | Fixed term — 1 year | 4% paid on maturity date |
-| `fixed02` | Fixed term — 2 years | 5% paid on maturity date |
-| `fixed03` | Fixed term — 3 years | 8% paid on maturity date |
+| Account Type | Description | Interest | Transactions |
+|---|---|---|---|
+| `current` | Standard current account | None | Allowed |
+| `saving` | Savings account | 7% per year, paid monthly (~0.583%) on the deposit day | Allowed |
+| `fixed01` | Fixed term — 1 year | 4% paid on maturity date | Not allowed |
+| `fixed02` | Fixed term — 2 years | 5% paid on maturity date | Not allowed |
+| `fixed03` | Fixed term — 3 years | 8% paid on maturity date | Not allowed |
 
-> Interest is calculated and displayed when checking a single account. Actual transaction processing is not yet implemented.
+> Interest is calculated and displayed when checking a single account (`[3]- Check accounts`). Fixed accounts cannot make deposits or withdrawals — an error is shown if attempted.
+
+---
+
+## Input Validation
+
+The following rules are enforced at the point of input, with re-prompting on failure:
+
+| Field | Rule |
+|---|---|
+| Account number | Exactly 12 digits; globally unique across all records |
+| Phone number | Digits only; 1–15 characters; leading zeros preserved (e.g. country prefix `0044...`) |
+| User ID | 3-digit zero-padded, auto-assigned — never manually entered |
+| Record ID | Auto-assigned as `max existing id + 1` — always unique even after deletions |
+| Username | Case-sensitive at login and in all lookups (e.g. `Alice` ≠ `alice`) |
+| Withdrawal amount | Must be greater than zero and not exceed the available balance |
+| Deposit amount | Must be greater than zero |
 
 ---
 
@@ -206,16 +255,17 @@ If the recipient is not logged in, the notification is silently skipped (the wri
 ### Demo
 
 ```
-Terminal A — Alice                   Terminal B — Bob (idle at menu)
-──────────────────────────────       ──────────────────────────────
+Terminal A — Alice                        Terminal B — Bob (idle at menu)
+─────────────────────────────────         ──────────────────────────────
 [7]- Transfer ownership
-Enter account: 99
+Enter account: 123456789012
 Transfer to: Bob
 ✔ Success!
-                                      ========================================
-                                               *** NOTIFICATION ***
-                                        'Alice' transferred account #99 to you!
-                                      ========================================
+                                           ========================================
+                                                    *** NOTIFICATION ***
+                                             'Alice' transferred account
+                                             #123456789012 to you!
+                                           ========================================
 ```
 
 ---
@@ -227,7 +277,6 @@ This project was completed as part of a systems programming exercise. Feel free 
 - Password encryption
 - SQLite database backend instead of flat files
 - Improved TUI using `ncurses`
-- Transaction history log per account
 
 ---
 

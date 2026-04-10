@@ -1,19 +1,43 @@
 #include "header.h"
 
+// Print a centered line inside the box (inner width = 46)
+static void printBoxCentered(const char *text)
+{
+    int len = (int)strlen(text);
+    int pad_left  = (46 - len) / 2;
+    int pad_right = 46 - len - pad_left;
+    printf(CYAN "  ║" RESET BCYAN "%*s%s%*s" RESET CYAN "║\n" RESET,
+           pad_left, "", text, pad_right, "");
+}
+
+// Print a left-aligned row inside the box, padded to inner width 46
+#define BOX_ITEM(str) \
+    printf(CYAN "  ║" RESET "%-46s" CYAN "║\n" RESET, str)
+
 void mainMenu(struct User u)
 {
     int option;
     system("clear");
-    printf("\n\n\t\t======= ATM =======\n\n");
-    printf("\n\t\t-->> Feel free to choose one of the options below <<--\n");
-    printf("\n\t\t[1]- Create a new account\n");
-    printf("\n\t\t[2]- Update account information\n");
-    printf("\n\t\t[3]- Check accounts\n");
-    printf("\n\t\t[4]- Check list of owned account\n");
-    printf("\n\t\t[5]- Make Transaction\n");
-    printf("\n\t\t[6]- Remove existing account\n");
-    printf("\n\t\t[7]- Transfer ownership\n");
-    printf("\n\t\t[8]- Exit\n");
+
+    char title[60];
+    snprintf(title, sizeof(title), "Welcome back, %s!", u.name);
+
+    printf("\n");
+    printf(BOX_TOP);
+    printBoxCentered(title);
+    printf(BOX_DIV);
+    BOX_ITEM("");
+    BOX_ITEM("   [1]  Create a new account");
+    BOX_ITEM("   [2]  Update account information");
+    BOX_ITEM("   [3]  Check accounts");
+    BOX_ITEM("   [4]  List all owned accounts");
+    BOX_ITEM("   [5]  Make Transaction");
+    BOX_ITEM("   [6]  Remove existing account");
+    BOX_ITEM("   [7]  Transfer ownership");
+    BOX_ITEM("   [8]  Exit");
+    BOX_ITEM("");
+    printf(BOX_BOT);
+    printf(YELLOW "  ▷ Enter your choice: " RESET);
     scanf("%d", &option);
 
     switch (option)
@@ -31,8 +55,7 @@ void mainMenu(struct User u)
         checkAllAccounts(u);
         break;
     case 5:
-        // student TODO : add your **Make transaction** function
-        // here
+        makeTransaction(u);
         break;
     case 6:
         removeAccount(u);
@@ -44,22 +67,31 @@ void mainMenu(struct User u)
         exit(1);
         break;
     default:
-        printf("Invalid operation!\n");
+        printf(RED "  Invalid option. Please try again.\n" RESET);
+        mainMenu(u);
     }
-};
+}
 
 void initMenu(struct User *u)
 {
     int r = 0;
     int option;
     system("clear");
-    printf("\n\n\t\t======= ATM =======\n");
-    printf("\n\t\t-->> Feel free to login / register :\n");
-    printf("\n\t\t[1]- login\n");
-    printf("\n\t\t[2]- register\n");
-    printf("\n\t\t[3]- exit\n");
+
+    printf("\n");
+    printf(BOX_TOP);
+    printBoxCentered("ATM Management System");
+    printf(BOX_DIV);
+    BOX_ITEM("");
+    BOX_ITEM("   [1]  Login");
+    BOX_ITEM("   [2]  Register");
+    BOX_ITEM("   [3]  Exit");
+    BOX_ITEM("");
+    printf(BOX_BOT);
+
     while (!r)
     {
+        printf(YELLOW "  ▷ Enter your choice: " RESET);
         scanf("%d", &option);
         switch (option)
         {
@@ -67,11 +99,11 @@ void initMenu(struct User *u)
             loginMenu(u->name, u->password);
             if (strcmp(u->password, getPassword(*u)) == 0)
             {
-                printf("\n\nPassword Match!");
+                printf(BGREEN "\n  ✔ Password match! Logging in...\n" RESET);
             }
             else
             {
-                printf("\nWrong password!! or User Name\n");
+                printf(BRED "\n  ✖ Wrong username or password.\n" RESET);
                 exit(1);
             }
             r = 1;
@@ -84,10 +116,10 @@ void initMenu(struct User *u)
             exit(1);
             break;
         default:
-            printf("Insert a valid operation!\n");
+            printf(RED "  Invalid option. Please try again.\n" RESET);
         }
     }
-};
+}
 
 int main()
 {

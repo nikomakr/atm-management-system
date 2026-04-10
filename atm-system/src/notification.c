@@ -81,7 +81,7 @@ void startNotificationListener(struct User u)
     listener_pid = pid;
 }
 
-void sendNotification(const char *toUser, const char *fromUser, int accountNbr)
+void sendNotification(const char *toUser, const char *fromUser, const char *accountNbr)
 {
     char fifo_path[256];
     getFifoPath(fifo_path, toUser);
@@ -93,7 +93,7 @@ void sendNotification(const char *toUser, const char *fromUser, int accountNbr)
 
     char msg[512];
     snprintf(msg, sizeof(msg),
-             "'%s' transferred account #%d to you!", fromUser, accountNbr);
+             "'%s' transferred account #%s to you!", fromUser, accountNbr);
 
     write(fd, msg, strlen(msg));
     close(fd);

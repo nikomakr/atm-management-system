@@ -8,7 +8,9 @@ void loginMenu(char a[50], char pass[50])
     struct termios oflags, nflags;
 
     system("clear");
-    printf("\n\n\n\t\t\t\t   Bank Management System\n\t\t\t\t\t User Login:");
+    printf("\n" BCYAN "  ATM Management System — Login\n" RESET);
+    printf(CYAN "  ──────────────────────────────\n" RESET);
+    printf(YELLOW "  Username: " RESET);
     scanf("%s", a);
 
     // disabling echo
@@ -22,7 +24,7 @@ void loginMenu(char a[50], char pass[50])
         perror("tcsetattr");
         return exit(1);
     }
-    printf("\n\n\n\n\n\t\t\t\tEnter the password to login:");
+    printf(YELLOW "  Password: " RESET);
     scanf("%s", pass);
 
     // restore terminal
@@ -85,7 +87,9 @@ void registerMenu(char a[50], char pass[50])
     int maxId = -1;
 
     system("clear");
-    printf("\n\n\n\t\t\t\t   Bank Management System\n\t\t\t\t\t Register:");
+    printf("\n" BCYAN "  ATM Management System — Register\n" RESET);
+    printf(CYAN "  ──────────────────────────────────\n" RESET);
+    printf(YELLOW "  Choose a username: " RESET);
     scanf("%s", a);
 
     // check for duplicate username
@@ -96,7 +100,7 @@ void registerMenu(char a[50], char pass[50])
             if (strcmp(u.name, a) == 0)
             {
                 fclose(fp);
-                printf("\n\t\t\tUsername already exists. Please choose another.\n");
+                printf(BRED "\n  ✖ Username already exists. Please choose another.\n" RESET);
                 exit(1);
             }
             if (u.id > maxId)
@@ -116,7 +120,7 @@ void registerMenu(char a[50], char pass[50])
         perror("tcsetattr");
         exit(1);
     }
-    printf("\n\n\n\n\n\t\t\t\tEnter a password:");
+    printf(YELLOW "  Choose a password: " RESET);
     scanf("%s", pass);
 
     if (tcsetattr(fileno(stdin), TCSANOW, &oflags) != 0)
@@ -131,8 +135,8 @@ void registerMenu(char a[50], char pass[50])
         printf("Error opening file!\n");
         exit(1);
     }
-    fprintf(fp, "%d %s %s\n", maxId + 1, a, pass);
+    fprintf(fp, "%03d %s %s\n", maxId + 1, a, pass);
     fclose(fp);
 
-    printf("\n\t\t\tAccount created successfully! Welcome, %s.\n", a);
+    printf(BGREEN "\n  ✔ Account created successfully! Welcome, %s.\n" RESET, a);
 }
