@@ -46,7 +46,7 @@ struct User
 {
     int id;
     char name[50];
-    char password[50];
+    char password[65]; // SHA-256 hex digest = 64 chars + null
 };
 
 struct Transaction

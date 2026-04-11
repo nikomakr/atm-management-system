@@ -1,16 +1,20 @@
-objects = src/main.o src/system.o src/auth.o src/notification.o
+CC      = cc
+CFLAGS  = -Wall -Wextra -std=c11
+LDFLAGS = -framework CoreFoundation -framework Security
+TARGET  = atm
+SRCS    = src/main.c src/system.c src/auth.c src/notification.c
+OBJS    = $(SRCS:.c=.o)
 
-atm : $(objects)
-	cc -o atm $(objects)
+$(TARGET) : $(OBJS)
+	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 
-main.o : src/header.h
-kbd.o : src/header.h
-command.o : src/header.h
-display.o : src/header.h
-insert.o : src/header.h
-search.o : src/header.h
-files.o : src/header.h
-utils.o : src/header.h
+src/%.o : src/%.c src/header.h
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+run : $(TARGET)
+	./$(TARGET)
 
 clean :
-	rm -f $(objects)
+	rm -f $(OBJS) $(TARGET)
+
+.PHONY : run clean

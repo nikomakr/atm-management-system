@@ -1,5 +1,17 @@
 #include <termios.h> // for terminal control (hiding password input)
+#include <CommonCrypto/CommonDigest.h>
 #include "header.h"
+
+// Compute SHA-256 of `input` and write 64-char hex string (+null) into `out`.
+// `out` must be at least 65 bytes.
+static void hashPassword(const char *input, char out[65])
+{
+    unsigned char digest[CC_SHA256_DIGEST_LENGTH];
+    CC_SHA256(input, (CC_LONG)strlen(input), digest);
+    for (int i = 0; i < CC_SHA256_DIGEST_LENGTH; i++)
+        snprintf(out + i * 2, 3, "%02x", digest[i]);
+    out[64] = '\0';
+}
 
 char *USERS = "./data/users.txt";
 
@@ -24,8 +36,9 @@ void loginMenu(char a[50], char pass[50])
         perror("tcsetattr");
         return exit(1);
     }
+    char raw[50];
     printf(YELLOW "  Password: " RESET);
-    scanf("%s", pass);
+    scanf("%s", raw);
 
     // restore terminal
     if (tcsetattr(fileno(stdin), TCSANOW, &oflags) != 0)
@@ -33,6 +46,8 @@ void loginMenu(char a[50], char pass[50])
         perror("tcsetattr");
         return exit(1);
     }
+
+    hashPassword(raw, pass);
 };
 
 void loadUser(struct User *u)
@@ -120,14 +135,17 @@ void registerMenu(char a[50], char pass[50])
         perror("tcsetattr");
         exit(1);
     }
+    char raw[50];
     printf(YELLOW "  Choose a password: " RESET);
-    scanf("%s", pass);
+    scanf("%s", raw);
 
     if (tcsetattr(fileno(stdin), TCSANOW, &oflags) != 0)
     {
         perror("tcsetattr");
         exit(1);
     }
+
+    hashPassword(raw, pass);
 
     // save new user
     if ((fp = fopen(USERS, "a")) == NULL)
