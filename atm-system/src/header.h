@@ -1,6 +1,12 @@
+#ifndef HEADER_H
+#define HEADER_H
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sqlite3.h>
+
+extern sqlite3 *db;
 
 // ── ANSI color codes ───────────────────────────────────────────────────────
 #define RESET    "\033[0m"
@@ -27,16 +33,15 @@ struct Date
     int month, day, year;
 };
 
-// all fields for each record of an account
 struct Record
 {
     int id;
     int userId;
     char name[100];
     char country[100];
-    char phone[16];      // up to 15 digits + null (includes country prefix)
+    char phone[16];
     char accountType[10];
-    char accountNbr[13]; // exactly 12 digits + null
+    char accountNbr[30];
     double amount;
     struct Date deposit;
     struct Date withdraw;
@@ -54,12 +59,16 @@ struct Transaction
     int id;
     int userId;
     char username[50];
-    char accountNbr[13];
-    char type[10];   // "deposit" or "withdraw"
+    char accountNbr[30];
+    char type[10];
     double amount;
     double newBalance;
     struct Date date;
 };
+
+// database
+void openDB(void);
+void closeDB(void);
 
 // authentication functions
 void loginMenu(char a[50], char pass[50]);
@@ -71,7 +80,7 @@ void loadUser(struct User *u);
 void startNotificationListener(struct User u);
 void sendNotification(const char *toUser, const char *fromUser, const char *accountNbr);
 
-// system function
+// system functions
 void createNewAcc(struct User u);
 void makeTransaction(struct User u);
 void mainMenu(struct User u);
@@ -80,3 +89,5 @@ void checkAllAccounts(struct User u);
 void updateAccount(struct User u);
 void removeAccount(struct User u);
 void transferOwnership(struct User u);
+
+#endif // HEADER_H

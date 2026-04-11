@@ -123,6 +123,9 @@ void initMenu(struct User *u)
 
 int main()
 {
+    openDB();
+    atexit(closeDB);
+
     struct User u = {0};
 
     initMenu(&u);

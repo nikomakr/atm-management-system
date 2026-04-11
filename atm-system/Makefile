@@ -1,8 +1,8 @@
 CC      = cc
 CFLAGS  = -Wall -Wextra -std=c11
-LDFLAGS = -framework CoreFoundation -framework Security
+LDFLAGS = -lsqlite3 -framework CoreFoundation -framework Security
 TARGET  = atm
-SRCS    = src/main.c src/system.c src/auth.c src/notification.c
+SRCS    = src/main.c src/system.c src/auth.c src/notification.c src/db.c
 OBJS    = $(SRCS:.c=.o)
 
 $(TARGET) : $(OBJS)

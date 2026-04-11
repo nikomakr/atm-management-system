@@ -2,14 +2,24 @@
 
 **Note: Confirm the data storage method used in the project (e.g., text files or a relational database like SQLite).**
 
-**Plain text files.** Three files are used:
-- `./data/users.txt` — registered user credentials
-- `./data/records.txt` — all bank account records
-- `./data/transactions.txt` — log of every deposit and withdrawal [Added it as a bonus feature]
+**SQLite relational database.** All data is stored in `./data/atm.db`, which is created and seeded automatically on first launch. Three tables are used:
+- `users` — registered user credentials (passwords stored as SHA-256 hashes)
+- `records` — all bank account records
+- `transactions` — log of every deposit and withdrawal
 
-All files use whitespace-delimited fields, one record per line.
+You can inspect the database at any time by passing a query directly — it runs and returns to your shell immediately:
+```bash
+sqlite3 atm-system/data/atm.db "SELECT name FROM users;"
+```
+All verification commands throughout this file follow that same pattern. If you open the interactive shell by mistake (`sqlite3 atm-system/data/atm.db` with no query), type `.quit` to exit.
 
-> **Testing note:** Account numbers are now validated to be **exactly 12 digits**. [Added it as a bonus feature] When the questions below reference short account numbers (e.g. `834213`), use the 12-digit equivalent instead (e.g. `000000834213`).
+> **Setup note:** Alice's four accounts (`834213`, `320421`, `3214`, `3212`) and users Alice, Michel, Bob, Jade, and Niko are pre-seeded into the database on first run via `INSERT OR IGNORE`. No manual setup is required.
+
+> **Working directory:** Two different directories are used:
+> - `./atm` and `make` commands must be run from inside `atm-system/`
+> - `sqlite3 atm-system/data/atm.db "..."` commands must be run from the `atm-management-system/` root
+>
+> To avoid confusion, open two terminal tabs — one in each directory.
 
 ---
 
@@ -17,15 +27,19 @@ All files use whitespace-delimited fields, one record per line.
 ## Is this user saved in the data storage (text file "./data/users.txt" or database), and if so, are all credentials correct (name and password)?
 
 **Yes.**
-cd atm-system
+
 How to test:
 1. Run `./atm` → choose `[2]- Register`
 2. Enter username: `Marcus`, password: `q1w2e3r4t5y6`
-3. Open `data/users.txt` — a new line appears:
+3. Verify is in the database by opening another terminal and run the command below:
+```bash
+sqlite3 atm-system/data/atm.db "SELECT id, name, password FROM users WHERE name = 'Marcus';"
 ```
-003 Marcus q1w2e3r4t5y6
+Expected output:
 ```
-The ID is auto-incremented (3-digit zero-padded) [Added it as a bonus feature], username and password are saved correctly.
+5|Marcus|40f598cc76550d29043b4ce234a5e4a0f2e5951a113baec2831f91d520f3db4a 
+```
+The ID is auto-incremented by SQLite, the username is saved correctly, and the password is stored as its SHA-256 hash [bonus feature], so if you will see the pasword slightly different is due to encryption. Also, the number 5 due to the autoincrement, that can be different later on subject to next available id number.
 
 ---
 
@@ -33,15 +47,15 @@ The ID is auto-incremented (3-digit zero-padded) [Added it as a bonus feature], 
 ## Did the application display an error message stating that this user already exists?
 
 **Yes.**
-cd atm-system
+
 How to test:
 1. Run `./atm` → choose `[2]- Register`
 2. Enter username: `Alice`
 3. The application immediately prints:
 ```
-Username already exists. Please choose another.
+✖ Username already exists. Please choose another.
 ```
-and exits. `users.txt` is not modified.
+and exits. The `users` table is not modified (enforced by a `SELECT COUNT(*)` check before any `INSERT`).
 
 ---
 
@@ -51,8 +65,10 @@ and exits. `users.txt` is not modified.
 **Yes.**
 
 How to verify:
-- Open `data/users.txt` — every line has a distinct username
-- The duplicate check in `registerMenu()` scans the entire file before writing, so a second "Alice" can never be saved
+```bash
+sqlite3 atm-system/data/atm.db "SELECT name FROM users;"
+```
+Every row has a distinct username. The `name` column is defined as `TEXT UNIQUE NOT NULL`, so the database itself enforces uniqueness in addition to the application-level duplicate check in `registerMenu()`.
 
 ---
 
@@ -60,12 +76,12 @@ How to verify:
 ## Was Alice able to enter the main menu?
 
 **Yes.**
-cd atm-system
+
 How to test:
 1. Run `./atm` → choose `[1]- Login`
 2. Enter username: `Alice`, password: `q1w2e3r4t5y6`
-3. Terminal prints `Password Match!` and the main menu appears
-4. Behind the scenes, `loadUser()` also reads `users.txt` to correctly set Alice's internal ID (`000`)
+3. Terminal prints `✔ Password match! Logging in...` and the main menu appears
+4. Behind the scenes, the entered password is SHA-256 hashed and compared against the stored digest; `loadUser()` queries the `users` table to correctly set Alice's internal ID (`0`)
 
 ---
 
@@ -75,13 +91,12 @@ How to test:
 **Yes.**
 
 How to test:
-1. Log in as Alice → `[1]- Create a new account` twice (e.g. account numbers `000000834213` and `000000320421`)
-2. Choose `[2]- Update account information`
-3. Enter a number that does not exist (e.g. `000000000000`)
-4. The application prints:
+1. Log in as Alice → `[2]- Update account information`
+2. Enter a number that does not exist for Alice (e.g. `000000000000`)
+3. The application prints:
 ```
-✖ Record not found!!
-Enter 0 to try again, 1 to return to main menu and 2 to exit:
+✖ Record not found!
+Enter 0 to try again, 1 for main menu, 2 to exit:
 ```
 
 ---
@@ -90,14 +105,12 @@ Enter 0 to try again, 1 to return to main menu and 2 to exit:
 ## Did the application prompt a choice of updating the phone number or the country?
 
 **Yes.**
-cd atm-system
-Run application & login:
-1. Run `./atm` → choose `[1]- Login`
-2. Enter username: `Alice`, password: `q1w2e3r4t5y6`
+
 How to test:
-1. Log in as Alice → `[2]- Update account information`
-2. Enter a valid account number (e.g. `000000834213`)
-3. The application presents:
+1. Run `./atm` → login as Alice
+2. Choose `[2]- Update account information`
+3. Enter a valid account number (e.g. `834213`)
+4. The application presents:
 ```
 What would you like to update?
 [1]- Phone number
@@ -111,17 +124,18 @@ Enter your choice:
 ## Was the phone number of that account updated in the application and the data storage (text file "records.txt" or database)?
 
 **Yes.**
-cd atm-system
-Run application & login:
-1. Run `./atm` → choose `[1]- Login`
-2. Enter username: `Alice`, password: `q1w2e3r4t5y6`
-How to test:
-1. Log in as Alice → `[2]- Update account information` → enter `000000834213`
-2. Choose `[1]- Phone number` → enter `004491234567` (digits only, max 15)
-3. The application confirms success
-4. Open `data/records.txt` — the phone field for that account is now `004491234567`
 
-> The phone field accepts up to 15 digits, preserves leading zeros (e.g. country prefix `0044`), and rejects any non-digit characters. [Added it as a bonus feature]
+How to test:
+1. Run `./atm` → login as Alice
+2. Choose `[2]- Update account information` → enter `834213`
+3. Choose `[1]- Phone number` → enter `004491234567`
+4. Verify in the database:
+```bash
+sqlite3 atm-system/data/atm.db "SELECT phone FROM records WHERE account_nbr = '834213';"
+```
+Expected output: `004491234567`
+
+> The phone field accepts up to 15 digits, preserves leading zeros (e.g. country prefix `0044`), and rejects any non-digit characters. [bonus feature]
 
 ---
 
@@ -129,14 +143,16 @@ How to test:
 ## Was the country of that account updated in the application and the data storage (text file "records.txt" or database)?
 
 **Yes.**
-cd atm-system
-Run application & login:
-1. Run `./atm` → choose `[1]- Login`
-2. Enter username: `Alice`, password: `q1w2e3r4t5y6`
+
 How to test:
-1. Log in as Alice → `[2]- Update account information` → enter `000000834213`
-2. Choose `[2]- Country` → enter `Germany`
-3. Open `data/records.txt` — the country field for that account is now `Germany`
+1. Run `./atm` → login as Alice
+2. Choose `[2]- Update account information` → enter `834213`
+3. Choose `[2]- Country` → enter `Germany`
+4. Verify in the database:
+```bash
+sqlite3 atm-system/data/atm.db "SELECT country FROM records WHERE account_nbr = '834213';"
+```
+Expected output: `Germany`
 
 ---
 
@@ -144,26 +160,23 @@ How to test:
 ## Did the application display the account information and the gain of $5.84 of interest on day 10 of every month?
 
 **Yes.**
-cd atm-system
-Run application & login:
-1. Run `./atm` → choose `[1]- Login`
-2. Enter username: `Alice`, password: `q1w2e3r4t5y6`
+
 How to test:
-1. Log in as Alice → `[1]- Create a new account`
-   - Date: `10/10/2012`
-   - Account number: `000000834213` *(must be 12 digits)*
-   - Country: `UK`
-   - Phone: `291231392`
-   - Amount: `1001.20`
-   - Type: `saving`
-2. Choose `[3]- Check accounts` → enter `000000834213`
+1. Run `./atm` → login as Alice
+2. Choose `[3]- Check accounts` → enter `834213`
 3. The application displays:
 ```
-Account number: 000000834213
+Account No   : 834213
 ...
-You will get $5.84 as interest on day 10 of every month
+💰 You will get $5.84 as interest on day 10 of every month
 ```
 Interest formula: `1001.20 × 0.07 / 12 = $5.84`
+
+> Account `834213` is pre-seeded in the database. To test the creation flow, first delete it:
+> ```bash
+> sqlite3 atm-system/data/atm.db "DELETE FROM records WHERE account_nbr = '834213';"
+> ```
+> Then use `[1]- Create a new account` with the values above.
 
 ---
 
@@ -171,19 +184,17 @@ Interest formula: `1001.20 × 0.07 / 12 = $5.84`
 ## Did the application display the account information and the gain of $40.05 of interest on 10/10/2013?
 
 **Yes.**
-cd atm-system
-Run application & login:
-1. Run `./atm` → choose `[1]- Login`
-2. Enter username: `Alice`, password: `q1w2e3r4t5y6`
+
 How to test:
-1. Log in as Alice → `[1]- Create a new account`
-   - Date: `10/10/2012`, Account number: `000000320421`, Country: `UK`, Phone: `291231392`, Amount: `1001.20`, Type: `fixed01`
-2. Choose `[3]- Check accounts` → enter `000000320421`
+1. Run `./atm` → login as Alice
+2. Choose `[3]- Check accounts` → enter `320421`
 3. The application displays:
 ```
-You will get $40.05 as interest on 10/10/2013
+💰 You will get $40.05 as interest on 10/10/2013
 ```
 Interest formula: `1001.20 × 0.04 = $40.05`
+
+> Account `320421` (fixed01, 1-year term) is pre-seeded in the database.
 
 ---
 
@@ -191,19 +202,17 @@ Interest formula: `1001.20 × 0.04 = $40.05`
 ## Did the application display the account information and the gain of $100.12 of interest on 10/10/2014?
 
 **Yes.**
-cd atm-system
-Run application & login:
-1. Run `./atm` → choose `[1]- Login`
-2. Enter username: `Alice`, password: `q1w2e3r4t5y6`
+
 How to test:
-1. Log in as Alice → `[1]- Create a new account`
-   - Account number: `000000003214`, Type: `fixed02` (rest same as above)
-2. Choose `[3]- Check accounts` → enter `000000003214`
+1. Run `./atm` → login as Alice
+2. Choose `[3]- Check accounts` → enter `3214`
 3. The application displays:
 ```
-You will get $100.12 as interest on 10/10/2014
+💰 You will get $100.12 as interest on 10/10/2014
 ```
 Interest formula: `1001.20 × 0.10 = $100.12`
+
+> Account `3214` (fixed02, 2-year term) is pre-seeded in the database.
 
 ---
 
@@ -211,19 +220,17 @@ Interest formula: `1001.20 × 0.10 = $100.12`
 ## Did the application display the account information and the gain of $240.29 of interest on 10/10/2015?
 
 **Yes.**
-cd atm-system
-Run application & login:
-1. Run `./atm` → choose `[1]- Login`
-2. Enter username: `Alice`, password: `q1w2e3r4t5y6`
+
 How to test:
-1. Log in as Alice → `[1]- Create a new account`
-   - Account number: `000000003212`, Type: `fixed03` (rest same as above)
-2. Choose `[3]- Check accounts` → enter `000000003212`
+1. Run `./atm` → login as Alice
+2. Choose `[3]- Check accounts` → enter `3212`
 3. The application displays:
 ```
-You will get $240.29 as interest on 10/10/2015
+💰 You will get $240.29 as interest on 10/10/2015
 ```
 Interest formula: `1001.20 × 0.24 = $240.29`
+
+> Account `3212` (fixed03, 3-year term) is pre-seeded in the database.
 
 ---
 
@@ -231,14 +238,12 @@ Interest formula: `1001.20 × 0.24 = $240.29`
 ## Was an error message displayed stating it is not possible to withdraw or deposit for "fixed" accounts?
 
 **Yes.**
-cd atm-system
-Run application & login:
-1. Run `./atm` → choose `[1]- Login`
-2. Enter username: `Alice`, password: `q1w2e3r4t5y6`
+
 How to test:
-1. Log in as Alice → `[5]- Make Transaction`
-2. Enter account number: `000000003212` (fixed03 account)
-3. The application immediately prints:
+1. Run `./atm` → login as Alice
+2. Choose `[5]- Make Transaction`
+3. Enter account number: `3212` (fixed03 account)
+4. The application immediately prints:
 ```
 ✖ Transactions are not allowed for fixed accounts.
 ```
@@ -251,20 +256,24 @@ How to test:
 ## Does the system forbid to withdraw an amount superior to your available balance?
 
 **Yes to all three.**
-cd atm-system
-Run application & login:
-1. Run `./atm` → choose `[1]- Login`
-2. Enter username: `Alice`, password: `q1w2e3r4t5y6`
+
 How to test:
-1. Log in as Alice → `[5]- Make Transaction` → enter `000000834213`
-2. Current balance is shown (e.g. `$1001.20`)
-3. Choose `[2]- Withdraw` → enter `200`
-4. Application shows: `New balance: $801.20` → `✔ Success!`
-5. Open `data/records.txt` — balance for `000000834213` is now `801.20` ✓
-6. Open `data/transactions.txt` — a new entry is appended:
+1. Run `./atm` → login as Alice
+2. Choose `[5]- Make Transaction` → enter `834213`
+3. Current balance is shown (e.g. `$1001.20`)
+4. Choose `[2]- Withdraw` → enter `200`
+5. Application shows: `New balance: $801.20` → `✔ Success!`
+6. Verify the balance update:
+```bash
+sqlite3 atm-system/data/atm.db "SELECT amount FROM records WHERE account_nbr = '834213';"
 ```
-0 000 Alice 000000834213 withdraw 200.00 801.20 10/10/2012
+Expected output: `801.2`
+
+7. Verify the transaction log:
+```bash
+sqlite3 atm-system/data/atm.db "SELECT * FROM transactions;"
 ```
+Expected row: `1|0|Alice|834213|withdraw|200.0|801.2|10|10|2012`
 
 To test the balance guard: choose `[2]- Withdraw` → enter an amount larger than the balance (e.g. `99999`)
 ```
@@ -278,16 +287,17 @@ To test the balance guard: choose `[2]- Withdraw` → enter an amount larger tha
 ## And if so did it update the data storage (text file "records.txt" or database)?
 
 **Yes.**
-cd atm-system
-Run application & login:
-1. Run `./atm` → choose `[1]- Login`
-2. Enter username: `Alice`, password: `q1w2e3r4t5y6`
+
 How to test:
-1. Log in as Alice → `[5]- Make Transaction` → enter `000000834213`
-2. Choose `[1]- Deposit` → enter `500`
-3. Application shows: `New balance: $1301.20` → `✔ Success!`
-4. Open `data/records.txt` — balance is updated ✓
-5. Open `data/transactions.txt` — a new deposit entry is appended ✓
+1. Run `./atm` → login as Alice
+2. Choose `[5]- Make Transaction` → enter `834213`
+3. Choose `[1]- Deposit` → enter `500`
+4. Application shows: `New balance: $1501.20` → `✔ Success!`
+5. Verify:
+```bash
+sqlite3 atm-system/data/atm.db "SELECT amount FROM records WHERE account_nbr = '834213';"
+sqlite3 atm-system/data/atm.db "SELECT type, amount, new_balance FROM transactions ORDER BY id DESC LIMIT 1;"
+```
 
 ---
 
@@ -295,15 +305,16 @@ How to test:
 ## Can you confirm that those account were deleted, both in the application and data storage (text file "records.txt" or database)?
 
 **Yes.**
-cd atm-system
-Run application & login:
-1. Run `./atm` → choose `[1]- Login`
-2. Enter username: `Alice`, password: `q1w2e3r4t5y6`
+
 How to test:
-1. Log in as Alice → `[6]- Remove existing account` → enter `000000834213` → `✔ Success!`
-2. Repeat for `000000320421` and `000000003214`
-3. Open `data/records.txt` — those three entries are gone ✓
-4. Choosing `[3]- Check accounts` and entering any of those numbers now returns `✖ Record not found!!`
+1. Run `./atm` → login as Alice
+2. Choose `[6]- Remove existing account` → enter `834213` → `✔ Success!`
+3. Repeat for `320421` and `3214`
+4. Verify the records are gone:
+```bash
+sqlite3 atm-system/data/atm.db "SELECT account_nbr FROM records WHERE name = 'Alice';"
+```
+Expected output: only `3212` remains.
 
 ---
 
@@ -311,17 +322,15 @@ How to test:
 ## Did the application prompt some type of error saying that the account does not exist?
 
 **Yes.**
-cd atm-system
-Run application & login:
-1. Run `./atm` → choose `[1]- Login`
-2. Enter username: `Alice`, password: `q1w2e3r4t5y6`
+
 How to test:
-1. Log in as Alice → `[6]- Remove existing account`
-2. Enter a number that does not exist (e.g. `000000000000`)
-3. The application prints:
+1. Run `./atm` → login as Alice
+2. Choose `[6]- Remove existing account`
+3. Enter a number that does not exist (e.g. `000000000000`)
+4. The application prints:
 ```
-✖ Record not found!!
-Enter 0 to try again, 1 to return to main menu and 2 to exit:
+✖ Record not found!
+Enter 0 to try again, 1 for main menu, 2 to exit:
 ```
 
 ---
@@ -330,16 +339,19 @@ Enter 0 to try again, 1 to return to main menu and 2 to exit:
 ## Were you able to transfer the ownership of this account to Michel? And if so did it update both application and data storage (text file "records.txt" or database)?
 
 **Yes.**
-cd atm-system
-Run application:
-1. Run `./atm` → choose `[1]- Login`
+
 How to test:
-1. Register `Michel` if not already registered
-2. Log in as Alice → `[7]- Transfer ownership`
-3. Enter account number: `000000003212`
-4. Enter target username: `Michel` *(case-sensitive — `michel` will not match)*
-5. Application confirms `✔ Success!`
-6. Open `data/records.txt` — the entry for `000000003212` now shows `Michel` as the owner ✓
+1. Michel is pre-seeded in the database; no registration step needed
+2. Run `./atm` → login as Alice
+3. Choose `[7]- Transfer ownership`
+4. Enter account number: `3212`
+5. Enter target username: `Michel` *(case-sensitive)*
+6. Application confirms `✔ Success!`
+7. Verify the ownership change:
+```bash
+sqlite3 atm-system/data/atm.db "SELECT user_id, name FROM records WHERE account_nbr = '3212';"
+```
+Expected output: `1|Michel`
 
 ---
 
@@ -351,41 +363,67 @@ How to test:
 **Yes.**
 
 How to test:
-1. Terminal 1: `./atm` → log in as `Bob`
-2. Terminal 2: `./atm` → log in as `Alice`
-3. In Terminal 2 (Alice): `[7]- Transfer ownership` → enter a valid account number → target: `Bob`
-4. The moment Alice confirms, Terminal 1 (Bob) instantly shows:
+1. Terminal 1: `./atm` → log in as `Nick` with password `123!`
+2. Terminal 2: `./atm` → log in as `Tom` with password `123!`
+3. In Terminal 2 (Tom): `[7]- Transfer ownership` → enter a valid account number → target: `Nick`
+4. The moment Tom confirms, Terminal 1 (Nick) instantly shows:
 ```
 ========================================
          *** NOTIFICATION ***
-  'Alice' transferred account #000000003212 to you!
+  'Tom' transferred account #32012 to you!
 ========================================
 ```
 
-This works via a named FIFO at `/tmp/atm_notify_Bob` and a forked child process that blocks on `read()`. You can verify the FIFO exists while Bob is logged in:
+This works via a named FIFO at `/tmp/atm_notify_Nick` and a forked child process that blocks on `read()`. You can verify the FIFO exists while Bob is logged in:
 ```bash
 ls /tmp/atm_notify_*
 ```
 
 ## +Did the student update the terminal interface?
 
-**No.** The UI uses the same basic `printf`/`scanf` terminal interface.
+**Yes.**
+
+All menus are rendered using ANSI colour codes and Unicode box-drawing characters. Headers are displayed in bold cyan inside bordered panels, prompts in yellow, success messages in bold green, and error messages in bold red. The main menu greets the logged-in user by name in a centred header.
 
 ## +Is the password saved in the data storage (text file "users.txt" or database) encrypted?
 
-**No.** Passwords are stored in plain text in `users.txt`.
+**Yes.**
+
+Passwords are hashed with SHA-256 using macOS CommonCrypto before being stored. The 64-character hex digest is saved in the `users` table; the plain-text password is never written to disk. On login, the entered password is hashed and compared against the stored digest.
+
+Verify:
+```bash
+sqlite3 atm-system/data/atm.db "SELECT name, password FROM users WHERE name = 'Alice';"
+```
+Expected output:
+```
+Alice|40f598cc76550d29043b4ce234a5e4a0f2e5951a113baec2831f91d520f3db4a
+```
 
 ## +Did the student create a relational database?
 
-**No.** Storage uses plain text files. Three files are maintained: `users.txt`, `records.txt`, and `transactions.txt`.
+**Yes.**
+
+Storage uses SQLite (`data/atm.db`), created and seeded automatically at startup. Three tables are defined with proper types, `UNIQUE` and `NOT NULL` constraints, and a foreign key from `records.user_id` to `users.id`.
+
+Schema overview:
+```bash
+sqlite3 atm-system/data/atm.db ".schema"
+```
 
 ## +Did the student make their own Makefile?
 
-**Yes.** A `Makefile` is present that compiles `main.c`, `auth.c`, `system.c`, and `notification.c` into separate object files and links them into the `atm` executable. A `clean` target is also provided.
+**Yes.**
+
+A `Makefile` is present that compiles `main.c`, `auth.c`, `system.c`, `notification.c`, and `db.c` into separate object files and links them into the `atm` binary. It defines `CC`, `CFLAGS` (`-Wall -Wextra -std=c11`), and `LDFLAGS` (`-lsqlite3` plus CommonCrypto frameworks). A pattern rule ensures any source file recompiles when `header.h` changes. A `run` target builds and launches the binary; `clean` removes all objects and the binary.
 
 To build:
 ```bash
 make clean && make
+```
+To build and run in one step:
+```bash
+make run
 ```
 
 ## +Did the student add more features to the project?
@@ -393,14 +431,16 @@ make clean && make
 **Yes.** The following were added beyond the base requirements:
 
 1. **Real-time transfer notifications** — named pipes (FIFOs) + `fork()`. The recipient is instantly alerted in their terminal when an account is transferred to them, even mid-session.
-2. **Transaction log** — every deposit and withdrawal is appended to `data/transactions.txt` with the transaction ID, user, account number, type, amount, new balance, and date.
+2. **Transaction log** — every deposit and withdrawal is recorded in the `transactions` table with the user ID, username, account number, type, amount, new balance, and date.
+3. **Password encryption** — SHA-256 hashing via CommonCrypto; plain-text passwords never touch disk.
+4. **Styled TUI** — ANSI colour codes and Unicode box-drawing characters throughout all menus.
+5. **SQLite relational database** — full data layer backed by SQLite, replacing plain text files.
 
 ## +Did the student optimize the code already given?
 
 **Yes.** The following optimisations and fixes were applied:
 
-1. **`u.id` garbage value bug** — `struct User u` was uninitialised at declaration. Added `= {0}` at declaration and introduced `loadUser()` in `auth.c` to correctly populate `u.id` from `users.txt` after every login or registration.
-2. **Record ID uniqueness** — changed from `recordCount` (which could repeat after deletions) to `maxId + 1`, guaranteeing a unique ID even if records have been removed.
-3. **Account number validation** — enforced to be exactly 12 digits and globally unique across all records. Input is re-prompted until valid.
-4. **Phone number stored as string** — changed from `long` (which stripped leading zeros and had no format check) to `char[16]`. Accepts up to 15 digits, preserves leading zeros (e.g. country prefix `0044...`), and rejects any non-digit characters.
-5. **User ID zero-padded** — stored as 3-digit zero-padded integer (`000`, `001`, `002`…) in both `users.txt` and `records.txt`.
+1. **`u.id` garbage value bug** — `struct User u` was uninitialised at declaration. Added `= {0}` at declaration and introduced `loadUser()` to correctly populate `u.id` from the `users` table after every login or registration.
+2. **Record ID uniqueness** — IDs are now managed by SQLite `AUTOINCREMENT`, guaranteeing uniqueness even after deletions.
+3. **Phone number stored as string** — changed from `long` (which stripped leading zeros and had no format check) to `TEXT` in the database / `char[16]` in the struct. Accepts up to 15 digits, preserves leading zeros (e.g. country prefix `0044...`), and rejects non-digit characters.
+4. **User ID zero-padded** — stored as a 3-digit zero-padded integer (`000`, `001`, `002`…) in display contexts; the integer primary key in the database is `0`, `1`, `2`…

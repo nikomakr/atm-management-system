@@ -1,12 +1,8 @@
 #include "header.h"
 #include <ctype.h>
 
-const char *RECORDS = "./data/records.txt";
-const char *TRANSACTIONS = "./data/transactions.txt";
-
 // ── Validation helpers ─────────────────────────────────────────────────────
 
-// Digits only, 1–15 characters (preserves leading zeros e.g. 0044...)
 static int isValidPhone(const char *s)
 {
     int len = (int)strlen(s);
@@ -18,75 +14,65 @@ static int isValidPhone(const char *s)
     return 1;
 }
 
-// Exactly 12 digits
 static int isValidAccountNbr(const char *s)
 {
-    if ((int)strlen(s) != 12)
+    int len = (int)strlen(s);
+    if (len < 1 || len > 20)
         return 0;
-    for (int i = 0; i < 12; i++)
+    for (int i = 0; i < len; i++)
         if (!isdigit((unsigned char)s[i]))
             return 0;
     return 1;
 }
 
-// ── File I/O ───────────────────────────────────────────────────────────────
+// ── SQLite helpers ─────────────────────────────────────────────────────────
 
-void saveTransactionToFile(struct User u, const char *accountNbr, const char *type,
-                           double amount, double newBalance, struct Date date)
+#define RECORD_FIELDS \
+    "id, user_id, name, account_nbr, deposit_month, deposit_day, deposit_year," \
+    " country, phone, amount, account_type"
+
+static void rowToRecord(sqlite3_stmt *stmt, struct Record *r)
 {
-    FILE *pf = fopen(TRANSACTIONS, "a+");
-    if (pf == NULL)
-    {
-        printf("Error opening transactions file!\n");
-        return;
-    }
-
-    int count = 0;
-    struct Transaction t;
-    while (fscanf(pf, "%d %d %s %s %s %lf %lf %d/%d/%d",
-                  &t.id, &t.userId, t.username, t.accountNbr,
-                  t.type, &t.amount, &t.newBalance,
-                  &t.date.month, &t.date.day, &t.date.year) != EOF)
-        count++;
-
-    fprintf(pf, "%d %03d %s %s %s %.2lf %.2lf %d/%d/%d\n\n",
-            count, u.id, u.name, accountNbr,
-            type, amount, newBalance,
-            date.month, date.day, date.year);
-
-    fclose(pf);
+    memset(r, 0, sizeof(*r));
+    r->id            = sqlite3_column_int(stmt, 0);
+    r->userId        = sqlite3_column_int(stmt, 1);
+    const char *col;
+    col = (const char *)sqlite3_column_text(stmt, 2);
+    if (col) strncpy(r->name,        col, sizeof(r->name)        - 1);
+    col = (const char *)sqlite3_column_text(stmt, 3);
+    if (col) strncpy(r->accountNbr,  col, sizeof(r->accountNbr)  - 1);
+    r->deposit.month = sqlite3_column_int(stmt, 4);
+    r->deposit.day   = sqlite3_column_int(stmt, 5);
+    r->deposit.year  = sqlite3_column_int(stmt, 6);
+    col = (const char *)sqlite3_column_text(stmt, 7);
+    if (col) strncpy(r->country,     col, sizeof(r->country)     - 1);
+    col = (const char *)sqlite3_column_text(stmt, 8);
+    if (col) strncpy(r->phone,       col, sizeof(r->phone)       - 1);
+    r->amount        = sqlite3_column_double(stmt, 9);
+    col = (const char *)sqlite3_column_text(stmt, 10);
+    if (col) strncpy(r->accountType, col, sizeof(r->accountType) - 1);
 }
 
-int getAccountFromFile(FILE *ptr, struct Record *r)
+static void saveTransaction(struct User u, const char *accountNbr, const char *type,
+                            double amount, double newBalance, struct Date date)
 {
-    return fscanf(ptr, "%d %d %s %s %d/%d/%d %s %s %lf %s",
-                  &r->id,
-                  &r->userId,
-                  r->name,
-                  r->accountNbr,
-                  &r->deposit.month,
-                  &r->deposit.day,
-                  &r->deposit.year,
-                  r->country,
-                  r->phone,
-                  &r->amount,
-                  r->accountType) != EOF;
-}
-
-void saveAccountToFile(FILE *ptr, struct User u, struct Record r)
-{
-    fprintf(ptr, "%d %03d %s %s %d/%d/%d %s %s %.2lf %s\n\n",
-            r.id,
-            u.id,
-            u.name,
-            r.accountNbr,
-            r.deposit.month,
-            r.deposit.day,
-            r.deposit.year,
-            r.country,
-            r.phone,
-            r.amount,
-            r.accountType);
+    const char *sql =
+        "INSERT INTO transactions"
+        " (user_id, username, account_nbr, type, amount, new_balance, t_month, t_day, t_year)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    sqlite3_stmt *stmt;
+    sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    sqlite3_bind_int(stmt,    1, u.id);
+    sqlite3_bind_text(stmt,   2, u.name,      -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt,   3, accountNbr,  -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt,   4, type,         -1, SQLITE_STATIC);
+    sqlite3_bind_double(stmt, 5, amount);
+    sqlite3_bind_double(stmt, 6, newBalance);
+    sqlite3_bind_int(stmt,    7, date.month);
+    sqlite3_bind_int(stmt,    8, date.day);
+    sqlite3_bind_int(stmt,    9, date.year);
+    sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
 }
 
 // ── Utility ────────────────────────────────────────────────────────────────
@@ -139,13 +125,9 @@ invalid:
     scanf("%d", &option);
     system("clear");
     if (option == 1)
-    {
         mainMenu(u);
-    }
     else if (option == 0)
-    {
         exit(1);
-    }
     else
     {
         printf(RED "  Invalid option.\n" RESET);
@@ -158,126 +140,112 @@ invalid:
 void createNewAcc(struct User u)
 {
     struct Record r;
-    struct Record records[100];
-    int count = 0;
-    int maxId = -1;
+    memset(&r, 0, sizeof(r));
 
     system("clear");
     printf("\n" BCYAN "  ===== New Account =====\n\n" RESET);
     printf(YELLOW "  Enter today's date (mm/dd/yyyy): " RESET);
     scanf("%d/%d/%d", &r.deposit.month, &r.deposit.day, &r.deposit.year);
 
-    // Load all existing records to check uniqueness and find max id
-    FILE *pf = fopen(RECORDS, "a+");
-    if (pf == NULL)
-    {
-        printf("Error opening file!\n");
-        return;
-    }
-    rewind(pf);
-    struct Record tmp;
-    while (getAccountFromFile(pf, &tmp))
-    {
-        records[count++] = tmp;
-        if (tmp.id > maxId)
-            maxId = tmp.id;
-    }
-
-    // Account number: exactly 12 digits, globally unique
     char inputBuf[50];
+
+    // Account number: digits only, globally unique
     while (1)
     {
-        printf("\nEnter the account number (12 digits): ");
+        printf("\nEnter the account number: ");
         scanf("%s", inputBuf);
 
         if (!isValidAccountNbr(inputBuf))
         {
-            printf("✖ Account number must be exactly 12 digits.\n");
+            printf("✖ Account number must contain digits only (max 20).\n");
             continue;
         }
 
-        int duplicate = 0;
-        for (int i = 0; i < count; i++)
-        {
-            if (strcmp(records[i].accountNbr, inputBuf) == 0)
-            {
-                duplicate = 1;
-                break;
-            }
-        }
-        if (duplicate)
+        sqlite3_stmt *chk;
+        sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM records WHERE account_nbr = ?", -1, &chk, NULL);
+        sqlite3_bind_text(chk, 1, inputBuf, -1, SQLITE_STATIC);
+        sqlite3_step(chk);
+        int exists = sqlite3_column_int(chk, 0);
+        sqlite3_finalize(chk);
+
+        if (exists)
         {
             printf("✖ This account number already exists. Choose another.\n");
             continue;
         }
-        strncpy(r.accountNbr, inputBuf, 12);
-        r.accountNbr[12] = '\0';
+        strncpy(r.accountNbr, inputBuf, sizeof(r.accountNbr) - 1);
         break;
     }
 
     printf("\nEnter the country: ");
     scanf("%s", r.country);
 
-    // Phone: digits only, max 15 digits, leading zeros preserved
+    // Phone: digits only, max 15
     while (1)
     {
-        printf("\nEnter the phone number (digits only, up to 15, include country prefix e.g. 0044...): ");
+        printf("\nEnter the phone number (digits only, up to 15, include country prefix): ");
         scanf("%s", inputBuf);
         if (!isValidPhone(inputBuf))
         {
             printf("✖ Phone must contain digits only and be at most 15 digits.\n");
             continue;
         }
-        strncpy(r.phone, inputBuf, 15);
-        r.phone[15] = '\0';
+        strncpy(r.phone, inputBuf, sizeof(r.phone) - 1);
         break;
     }
 
     printf("\nEnter amount to deposit: $");
     scanf("%lf", &r.amount);
-    printf("\nChoose the type of account:\n\t-> saving\n\t-> current\n\t-> fixed01(for 1 year)\n\t-> fixed02(for 2 years)\n\t-> fixed03(for 3 years)\n\n\tEnter your choice: ");
+    printf("\nChoose the type of account:\n"
+           "\t-> saving\n\t-> current\n"
+           "\t-> fixed01(for 1 year)\n\t-> fixed02(for 2 years)\n\t-> fixed03(for 3 years)\n"
+           "\n\tEnter your choice: ");
     scanf("%s", r.accountType);
 
-    r.id = maxId + 1;
-    r.userId = u.id;
+    const char *sql =
+        "INSERT INTO records"
+        " (user_id, name, account_nbr, deposit_month, deposit_day, deposit_year,"
+        "  country, phone, amount, account_type)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+    sqlite3_stmt *stmt;
+    sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+    sqlite3_bind_int(stmt,    1, u.id);
+    sqlite3_bind_text(stmt,   2, u.name,          -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt,   3, r.accountNbr,    -1, SQLITE_STATIC);
+    sqlite3_bind_int(stmt,    4, r.deposit.month);
+    sqlite3_bind_int(stmt,    5, r.deposit.day);
+    sqlite3_bind_int(stmt,    6, r.deposit.year);
+    sqlite3_bind_text(stmt,   7, r.country,        -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt,   8, r.phone,           -1, SQLITE_STATIC);
+    sqlite3_bind_double(stmt, 9, r.amount);
+    sqlite3_bind_text(stmt,  10, r.accountType,    -1, SQLITE_STATIC);
+    if (sqlite3_step(stmt) != SQLITE_DONE)
+        fprintf(stderr, "Insert error: %s\n", sqlite3_errmsg(db));
+    sqlite3_finalize(stmt);
 
-    saveAccountToFile(pf, u, r);
-    fclose(pf);
     success(u);
 }
 
 void updateAccount(struct User u)
 {
-    struct Record r;
-    struct Record records[100];
-    int count = 0;
     char accountNbr[50];
-    int found = 0;
-    int foundIdx = -1;
-
     system("clear");
     printf("\n" BCYAN "  ===== Update Account Information =====\n\n" RESET);
     printf(YELLOW "  Enter the account number: " RESET);
     scanf("%s", accountNbr);
 
-    FILE *pf = fopen(RECORDS, "r");
-    if (pf == NULL)
-    {
-        printf("Error opening file!\n");
-        return;
-    }
+    // Find account belonging to this user
+    sqlite3_stmt *stmt;
+    sqlite3_prepare_v2(db,
+        "SELECT " RECORD_FIELDS " FROM records WHERE name = ? AND account_nbr = ?",
+        -1, &stmt, NULL);
+    sqlite3_bind_text(stmt, 1, u.name,      -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, accountNbr,  -1, SQLITE_STATIC);
 
-    while (getAccountFromFile(pf, &r))
-    {
-        records[count] = r;
-        if (strcmp(r.name, u.name) == 0 && strcmp(r.accountNbr, accountNbr) == 0)
-        {
-            found = 1;
-            foundIdx = count;
-        }
-        count++;
-    }
-    fclose(pf);
+    struct Record r;
+    int found = (sqlite3_step(stmt) == SQLITE_ROW);
+    if (found) rowToRecord(stmt, &r);
+    sqlite3_finalize(stmt);
 
     if (!found)
     {
@@ -304,15 +272,25 @@ void updateAccount(struct User u)
                 printf("✖ Phone must contain digits only and be at most 15 digits.\n");
                 continue;
             }
-            strncpy(records[foundIdx].phone, inputBuf, 15);
-            records[foundIdx].phone[15] = '\0';
             break;
         }
+        sqlite3_prepare_v2(db,
+            "UPDATE records SET phone = ? WHERE account_nbr = ? AND name = ?",
+            -1, &stmt, NULL);
+        sqlite3_bind_text(stmt, 1, inputBuf,    -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 2, accountNbr,  -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 3, u.name,      -1, SQLITE_STATIC);
     }
     else if (choice == 2)
     {
         printf("Enter new country: ");
-        scanf("%s", records[foundIdx].country);
+        scanf("%s", inputBuf);
+        sqlite3_prepare_v2(db,
+            "UPDATE records SET country = ? WHERE account_nbr = ? AND name = ?",
+            -1, &stmt, NULL);
+        sqlite3_bind_text(stmt, 1, inputBuf,    -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 2, accountNbr,  -1, SQLITE_STATIC);
+        sqlite3_bind_text(stmt, 3, u.name,      -1, SQLITE_STATIC);
     }
     else
     {
@@ -321,327 +299,30 @@ void updateAccount(struct User u)
         return;
     }
 
-    FILE *pfw = fopen(RECORDS, "w");
-    if (pfw == NULL)
-    {
-        printf("Error opening file!\n");
-        return;
-    }
-
-    for (int i = 0; i < count; i++)
-    {
-        struct User ru;
-        ru.id = records[i].userId;
-        strcpy(ru.name, records[i].name);
-        saveAccountToFile(pfw, ru, records[i]);
-    }
-    fclose(pfw);
-
-    success(u);
-}
-
-void transferOwnership(struct User u)
-{
-    struct Record r;
-    struct Record records[100];
-    int count = 0;
-    char accountNbr[50];
-    int found = 0;
-    int foundIdx = -1;
-
-    system("clear");
-    printf("\n" BCYAN "  ===== Transfer Account Ownership =====\n\n" RESET);
-    printf(YELLOW "  Enter the account number to transfer: " RESET);
-    scanf("%s", accountNbr);
-
-    FILE *pf = fopen(RECORDS, "r");
-    if (pf == NULL)
-    {
-        printf("Error opening file!\n");
-        return;
-    }
-
-    while (getAccountFromFile(pf, &r))
-    {
-        records[count] = r;
-        if (strcmp(r.name, u.name) == 0 && strcmp(r.accountNbr, accountNbr) == 0)
-        {
-            found = 1;
-            foundIdx = count;
-        }
-        count++;
-    }
-    fclose(pf);
-
-    if (!found)
-    {
-        stayOrReturn(0, transferOwnership, u);
-        return;
-    }
-
-    char targetName[50];
-    printf("Enter the username to transfer ownership to (case-sensitive): ");
-    scanf("%s", targetName);
-
-    struct User target;
-    int targetFound = 0;
-    FILE *uf = fopen("./data/users.txt", "r");
-    if (uf == NULL)
-    {
-        printf("Error opening users file!\n");
-        return;
-    }
-    while (fscanf(uf, "%d %s %s", &target.id, target.name, target.password) != EOF)
-    {
-        if (strcmp(target.name, targetName) == 0)
-        {
-            targetFound = 1;
-            break;
-        }
-    }
-    fclose(uf);
-
-    if (!targetFound)
-    {
-        printf("\n✖ User \"%s\" not found!\n", targetName);
-        stayOrReturn(0, transferOwnership, u);
-        return;
-    }
-
-    records[foundIdx].userId = target.id;
-    strcpy(records[foundIdx].name, target.name);
-
-    FILE *pfw = fopen(RECORDS, "w");
-    if (pfw == NULL)
-    {
-        printf("Error opening file!\n");
-        return;
-    }
-
-    for (int i = 0; i < count; i++)
-    {
-        struct User ru;
-        ru.id = records[i].userId;
-        strcpy(ru.name, records[i].name);
-        saveAccountToFile(pfw, ru, records[i]);
-    }
-    fclose(pfw);
-
-    sendNotification(target.name, u.name, accountNbr);
-
-    success(u);
-}
-
-void removeAccount(struct User u)
-{
-    struct Record r;
-    struct Record records[100];
-    int count = 0;
-    char accountNbr[50];
-    int found = 0;
-    int foundIdx = -1;
-
-    system("clear");
-    printf("\n" BCYAN "  ===== Remove Account =====\n\n" RESET);
-    printf(YELLOW "  Enter the account number: " RESET);
-    scanf("%s", accountNbr);
-
-    FILE *pf = fopen(RECORDS, "r");
-    if (pf == NULL)
-    {
-        printf(RED "  Error opening file!\n" RESET);
-        return;
-    }
-
-    while (getAccountFromFile(pf, &r))
-    {
-        records[count] = r;
-        if (strcmp(r.name, u.name) == 0 && strcmp(r.accountNbr, accountNbr) == 0)
-        {
-            found = 1;
-            foundIdx = count;
-        }
-        count++;
-    }
-    fclose(pf);
-
-    if (!found)
-    {
-        stayOrReturn(0, removeAccount, u);
-        return;
-    }
-
-    FILE *pfw = fopen(RECORDS, "w");
-    if (pfw == NULL)
-    {
-        printf("Error opening file!\n");
-        return;
-    }
-
-    for (int i = 0; i < count; i++)
-    {
-        if (i == foundIdx)
-            continue;
-        struct User ru;
-        ru.id = records[i].userId;
-        strcpy(ru.name, records[i].name);
-        saveAccountToFile(pfw, ru, records[i]);
-    }
-    fclose(pfw);
-
-    success(u);
-}
-
-void makeTransaction(struct User u)
-{
-    struct Record r;
-    struct Record records[100];
-    int count = 0;
-    char accountNbr[50];
-    int found = 0;
-    int foundIdx = -1;
-
-    system("clear");
-    printf("\n" BCYAN "  ===== Make Transaction =====\n\n" RESET);
-    printf(YELLOW "  Enter the account number: " RESET);
-    scanf("%s", accountNbr);
-
-    FILE *pf = fopen(RECORDS, "r");
-    if (pf == NULL)
-    {
-        printf("Error opening file!\n");
-        return;
-    }
-
-    while (getAccountFromFile(pf, &r))
-    {
-        records[count] = r;
-        if (strcmp(r.name, u.name) == 0 && strcmp(r.accountNbr, accountNbr) == 0)
-        {
-            found = 1;
-            foundIdx = count;
-        }
-        count++;
-    }
-    fclose(pf);
-
-    if (!found)
-    {
-        stayOrReturn(0, makeTransaction, u);
-        return;
-    }
-
-    char *type = records[foundIdx].accountType;
-    if (strcmp(type, "fixed01") == 0 ||
-        strcmp(type, "fixed02") == 0 ||
-        strcmp(type, "fixed03") == 0)
-    {
-        printf("\n✖ Transactions are not allowed for fixed accounts.\n");
-        stayOrReturn(1, makeTransaction, u);
-        return;
-    }
-
-    printf(GREEN "\n  Current balance: $%.2f\n" RESET, records[foundIdx].amount);
-    printf(YELLOW "\n  What would you like to do?\n" RESET);
-    printf("   [1]  Deposit\n");
-    printf("   [2]  Withdraw\n");
-    printf(YELLOW "  ▷ Enter your choice: " RESET);
-
-    int choice;
-    scanf("%d", &choice);
-
-    double amount;
-    char transactionType[10];
-    if (choice == 1)
-    {
-        printf("Enter amount to deposit: $");
-        scanf("%lf", &amount);
-        if (amount <= 0)
-        {
-            printf("\n✖ Amount must be greater than zero.\n");
-            stayOrReturn(1, makeTransaction, u);
-            return;
-        }
-        records[foundIdx].amount += amount;
-        strcpy(transactionType, "deposit");
-    }
-    else if (choice == 2)
-    {
-        printf("Enter amount to withdraw: $");
-        scanf("%lf", &amount);
-        if (amount <= 0)
-        {
-            printf("\n✖ Amount must be greater than zero.\n");
-            stayOrReturn(1, makeTransaction, u);
-            return;
-        }
-        if (amount > records[foundIdx].amount)
-        {
-            printf("\n✖ Insufficient balance. Available: $%.2f\n", records[foundIdx].amount);
-            stayOrReturn(1, makeTransaction, u);
-            return;
-        }
-        records[foundIdx].amount -= amount;
-        strcpy(transactionType, "withdraw");
-    }
-    else
-    {
-        printf("Invalid choice!\n");
-        stayOrReturn(1, makeTransaction, u);
-        return;
-    }
-
-    printf(BGREEN "\n  New balance: $%.2f\n" RESET, records[foundIdx].amount);
-
-    FILE *pfw = fopen(RECORDS, "w");
-    if (pfw == NULL)
-    {
-        printf("Error opening file!\n");
-        return;
-    }
-
-    for (int i = 0; i < count; i++)
-    {
-        struct User ru;
-        ru.id = records[i].userId;
-        strcpy(ru.name, records[i].name);
-        saveAccountToFile(pfw, ru, records[i]);
-    }
-    fclose(pfw);
-
-    saveTransactionToFile(u, accountNbr, transactionType, amount,
-                          records[foundIdx].amount, records[foundIdx].deposit);
-
+    sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
     success(u);
 }
 
 void checkAccount(struct User u)
 {
-    struct Record r;
     char accountNbr[50];
-    int found = 0;
-
     system("clear");
     printf("\n" BCYAN "  ===== Check Account Details =====\n\n" RESET);
     printf(YELLOW "  Enter the account number: " RESET);
     scanf("%s", accountNbr);
 
-    FILE *pf = fopen(RECORDS, "r");
-    if (pf == NULL)
-    {
-        printf("Error opening file!\n");
-        return;
-    }
+    sqlite3_stmt *stmt;
+    sqlite3_prepare_v2(db,
+        "SELECT " RECORD_FIELDS " FROM records WHERE name = ? AND account_nbr = ?",
+        -1, &stmt, NULL);
+    sqlite3_bind_text(stmt, 1, u.name,     -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, accountNbr, -1, SQLITE_STATIC);
 
-    while (getAccountFromFile(pf, &r))
-    {
-        if (strcmp(r.name, u.name) == 0 && strcmp(r.accountNbr, accountNbr) == 0)
-        {
-            found = 1;
-            break;
-        }
-    }
-    fclose(pf);
+    struct Record r;
+    int found = (sqlite3_step(stmt) == SQLITE_ROW);
+    if (found) rowToRecord(stmt, &r);
+    sqlite3_finalize(stmt);
 
     if (!found)
     {
@@ -649,8 +330,6 @@ void checkAccount(struct User u)
         return;
     }
 
-    // ── Account details box ──────────────────────────────────────────────
-    // Label width = 14, separator = ": ", value = 30, total inner = 46
     char dateStr[20];
     snprintf(dateStr, sizeof(dateStr), "%02d/%02d/%04d",
              r.deposit.month, r.deposit.day, r.deposit.year);
@@ -702,35 +381,243 @@ void checkAccount(struct User u)
 
 void checkAllAccounts(struct User u)
 {
-    struct Record r;
-
-    FILE *pf = fopen(RECORDS, "r");
-
     system("clear");
-    int cardCount = 0;
     printf("\n" BCYAN "  Accounts owned by %s\n" RESET, u.name);
     printf(CYAN "  ══════════════════════════════════════════════\n\n" RESET);
-    while (getAccountFromFile(pf, &r))
-    {
-        if (strcmp(r.name, u.name) == 0)
-        {
-            cardCount++;
-            char dateStr[20];
-            snprintf(dateStr, sizeof(dateStr), "%02d/%02d/%04d",
-                     r.deposit.day, r.deposit.month, r.deposit.year);
 
-            printf(CYAN "  ┌──────────────────────────────────────────────┐\n" RESET);
-            printf(CYAN "  │" RESET YELLOW "  Account No  " RESET ": %-30s" CYAN "│\n" RESET, r.accountNbr);
-            printf(CYAN "  │" RESET YELLOW "  Opened on   " RESET ": %-30s" CYAN "│\n" RESET, dateStr);
-            printf(CYAN "  │" RESET YELLOW "  Country     " RESET ": %-30s" CYAN "│\n" RESET, r.country);
-            printf(CYAN "  │" RESET YELLOW "  Phone       " RESET ": %-30s" CYAN "│\n" RESET, r.phone);
-            printf(CYAN "  │" RESET YELLOW "  Balance     " RESET ": $%-29.2f" CYAN "│\n" RESET, r.amount);
-            printf(CYAN "  │" RESET YELLOW "  Type        " RESET ": %-30s" CYAN "│\n" RESET, r.accountType);
-            printf(CYAN "  └──────────────────────────────────────────────┘\n\n" RESET);
-        }
+    sqlite3_stmt *stmt;
+    sqlite3_prepare_v2(db,
+        "SELECT " RECORD_FIELDS " FROM records WHERE name = ?",
+        -1, &stmt, NULL);
+    sqlite3_bind_text(stmt, 1, u.name, -1, SQLITE_STATIC);
+
+    int cardCount = 0;
+    struct Record r;
+    while (sqlite3_step(stmt) == SQLITE_ROW)
+    {
+        rowToRecord(stmt, &r);
+        cardCount++;
+
+        char dateStr[20];
+        snprintf(dateStr, sizeof(dateStr), "%02d/%02d/%04d",
+                 r.deposit.day, r.deposit.month, r.deposit.year);
+
+        printf(CYAN "  ┌──────────────────────────────────────────────┐\n" RESET);
+        printf(CYAN "  │" RESET YELLOW "  Account No  " RESET ": %-30s" CYAN "│\n" RESET, r.accountNbr);
+        printf(CYAN "  │" RESET YELLOW "  Opened on   " RESET ": %-30s" CYAN "│\n" RESET, dateStr);
+        printf(CYAN "  │" RESET YELLOW "  Country     " RESET ": %-30s" CYAN "│\n" RESET, r.country);
+        printf(CYAN "  │" RESET YELLOW "  Phone       " RESET ": %-30s" CYAN "│\n" RESET, r.phone);
+        printf(CYAN "  │" RESET YELLOW "  Balance     " RESET ": $%-29.2f" CYAN "│\n" RESET, r.amount);
+        printf(CYAN "  │" RESET YELLOW "  Type        " RESET ": %-30s" CYAN "│\n" RESET, r.accountType);
+        printf(CYAN "  └──────────────────────────────────────────────┘\n\n" RESET);
     }
+    sqlite3_finalize(stmt);
+
     if (cardCount == 0)
         printf(YELLOW "  No accounts found.\n" RESET);
-    fclose(pf);
+
+    success(u);
+}
+
+void makeTransaction(struct User u)
+{
+    char accountNbr[50];
+    system("clear");
+    printf("\n" BCYAN "  ===== Make Transaction =====\n\n" RESET);
+    printf(YELLOW "  Enter the account number: " RESET);
+    scanf("%s", accountNbr);
+
+    sqlite3_stmt *stmt;
+    sqlite3_prepare_v2(db,
+        "SELECT " RECORD_FIELDS " FROM records WHERE name = ? AND account_nbr = ?",
+        -1, &stmt, NULL);
+    sqlite3_bind_text(stmt, 1, u.name,     -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, accountNbr, -1, SQLITE_STATIC);
+
+    struct Record r;
+    int found = (sqlite3_step(stmt) == SQLITE_ROW);
+    if (found) rowToRecord(stmt, &r);
+    sqlite3_finalize(stmt);
+
+    if (!found)
+    {
+        stayOrReturn(0, makeTransaction, u);
+        return;
+    }
+
+    if (strcmp(r.accountType, "fixed01") == 0 ||
+        strcmp(r.accountType, "fixed02") == 0 ||
+        strcmp(r.accountType, "fixed03") == 0)
+    {
+        printf("\n✖ Transactions are not allowed for fixed accounts.\n");
+        stayOrReturn(1, makeTransaction, u);
+        return;
+    }
+
+    printf(GREEN "\n  Current balance: $%.2f\n" RESET, r.amount);
+    printf(YELLOW "\n  What would you like to do?\n" RESET);
+    printf("   [1]  Deposit\n");
+    printf("   [2]  Withdraw\n");
+    printf(YELLOW "  ▷ Enter your choice: " RESET);
+
+    int choice;
+    scanf("%d", &choice);
+
+    double amount;
+    char transactionType[10];
+
+    if (choice == 1)
+    {
+        printf("Enter amount to deposit: $");
+        scanf("%lf", &amount);
+        if (amount <= 0)
+        {
+            printf("\n✖ Amount must be greater than zero.\n");
+            stayOrReturn(1, makeTransaction, u);
+            return;
+        }
+        r.amount += amount;
+        strncpy(transactionType, "deposit", sizeof(transactionType) - 1);
+    }
+    else if (choice == 2)
+    {
+        printf("Enter amount to withdraw: $");
+        scanf("%lf", &amount);
+        if (amount <= 0)
+        {
+            printf("\n✖ Amount must be greater than zero.\n");
+            stayOrReturn(1, makeTransaction, u);
+            return;
+        }
+        if (amount > r.amount)
+        {
+            printf("\n✖ Insufficient balance. Available: $%.2f\n", r.amount);
+            stayOrReturn(1, makeTransaction, u);
+            return;
+        }
+        r.amount -= amount;
+        strncpy(transactionType, "withdraw", sizeof(transactionType) - 1);
+    }
+    else
+    {
+        printf("Invalid choice!\n");
+        stayOrReturn(1, makeTransaction, u);
+        return;
+    }
+
+    printf(BGREEN "\n  New balance: $%.2f\n" RESET, r.amount);
+
+    sqlite3_prepare_v2(db,
+        "UPDATE records SET amount = ? WHERE account_nbr = ? AND name = ?",
+        -1, &stmt, NULL);
+    sqlite3_bind_double(stmt, 1, r.amount);
+    sqlite3_bind_text(stmt,  2, accountNbr, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt,  3, u.name,     -1, SQLITE_STATIC);
+    sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+
+    saveTransaction(u, accountNbr, transactionType, amount, r.amount, r.deposit);
+    success(u);
+}
+
+void removeAccount(struct User u)
+{
+    char accountNbr[50];
+    system("clear");
+    printf("\n" BCYAN "  ===== Remove Account =====\n\n" RESET);
+    printf(YELLOW "  Enter the account number: " RESET);
+    scanf("%s", accountNbr);
+
+    // Verify the account exists and belongs to this user
+    sqlite3_stmt *stmt;
+    sqlite3_prepare_v2(db,
+        "SELECT COUNT(*) FROM records WHERE name = ? AND account_nbr = ?",
+        -1, &stmt, NULL);
+    sqlite3_bind_text(stmt, 1, u.name,     -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, accountNbr, -1, SQLITE_STATIC);
+    sqlite3_step(stmt);
+    int found = sqlite3_column_int(stmt, 0);
+    sqlite3_finalize(stmt);
+
+    if (!found)
+    {
+        stayOrReturn(0, removeAccount, u);
+        return;
+    }
+
+    sqlite3_prepare_v2(db,
+        "DELETE FROM records WHERE account_nbr = ? AND name = ?",
+        -1, &stmt, NULL);
+    sqlite3_bind_text(stmt, 1, accountNbr, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, u.name,     -1, SQLITE_STATIC);
+    sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+
+    success(u);
+}
+
+void transferOwnership(struct User u)
+{
+    char accountNbr[50];
+    system("clear");
+    printf("\n" BCYAN "  ===== Transfer Account Ownership =====\n\n" RESET);
+    printf(YELLOW "  Enter the account number to transfer: " RESET);
+    scanf("%s", accountNbr);
+
+    // Verify account belongs to current user
+    sqlite3_stmt *stmt;
+    sqlite3_prepare_v2(db,
+        "SELECT COUNT(*) FROM records WHERE name = ? AND account_nbr = ?",
+        -1, &stmt, NULL);
+    sqlite3_bind_text(stmt, 1, u.name,     -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, accountNbr, -1, SQLITE_STATIC);
+    sqlite3_step(stmt);
+    int found = sqlite3_column_int(stmt, 0);
+    sqlite3_finalize(stmt);
+
+    if (!found)
+    {
+        stayOrReturn(0, transferOwnership, u);
+        return;
+    }
+
+    char targetName[50];
+    printf("Enter the username to transfer ownership to (case-sensitive): ");
+    scanf("%s", targetName);
+
+    // Look up target user in the database
+    struct User target = {0};
+    sqlite3_prepare_v2(db,
+        "SELECT id, name FROM users WHERE name = ?",
+        -1, &stmt, NULL);
+    sqlite3_bind_text(stmt, 1, targetName, -1, SQLITE_STATIC);
+    int targetFound = (sqlite3_step(stmt) == SQLITE_ROW);
+    if (targetFound)
+    {
+        target.id = sqlite3_column_int(stmt, 0);
+        strncpy(target.name,
+                (const char *)sqlite3_column_text(stmt, 1),
+                sizeof(target.name) - 1);
+    }
+    sqlite3_finalize(stmt);
+
+    if (!targetFound)
+    {
+        printf("\n✖ User \"%s\" not found!\n", targetName);
+        stayOrReturn(0, transferOwnership, u);
+        return;
+    }
+
+    sqlite3_prepare_v2(db,
+        "UPDATE records SET user_id = ?, name = ? WHERE account_nbr = ? AND name = ?",
+        -1, &stmt, NULL);
+    sqlite3_bind_int(stmt,  1, target.id);
+    sqlite3_bind_text(stmt, 2, target.name, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 3, accountNbr,  -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 4, u.name,      -1, SQLITE_STATIC);
+    sqlite3_step(stmt);
+    sqlite3_finalize(stmt);
+
+    sendNotification(target.name, u.name, accountNbr);
     success(u);
 }
